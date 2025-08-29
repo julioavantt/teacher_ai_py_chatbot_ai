@@ -13,6 +13,7 @@ from datetime import datetime, timedelta
 import os
 from dotenv import load_dotenv
 
+# Load environment variables from .env file
 load_dotenv()
 
 # Download required NLTK data
@@ -67,29 +68,45 @@ def predict_class(sentence, model):
     return return_list
 
 # Function to get coordinates from location name
-def get_coordinates(location):
-    print(location)
+def get_coordinates(location, api_key):
+    # Try Nominatim first
     try:
         loc = geolocator.geocode(location)
         if loc:
             return loc.latitude, loc.longitude
+    except:
+        pass
+    
+    # Fallback to OpenWeatherMap geocoding API for countries or ambiguous locations
+    try:
+        geo_url = "http://api.openweathermap.org/geo/1.0/direct"
+        params = {
+            "q": location,
+            "limit": 1,
+            "appid": api_key
+        }
+        response = requests.get(geo_url, params=params)
+        response.raise_for_status()
+        data = response.json()
+        if data and len(data) > 0:
+            return data[0]["lat"], data[0]["lon"]
         else:
             return None, None
-    except:
+    except requests.RequestException:
         return None, None
 
 # Function to extract location and period from user input
 def extract_location_and_period(sentence):
     sentence = sentence.lower()
-    # Common patterns for location (city or country)
-    location_pattern = r"(?:en|de)\s+([a-záéíóúñ\s]+)(?:\s+(?:hoy|mañana|esta semana|próximos?\s*\d*\s*(?:días?|meses?|semanas?))?)?$"
-    period_pattern = r"(hoy|mañana|esta semana|próximos?\s*(\d+)\s*(días?|meses?|semanas?))"
+    # Improved pattern to capture only city or country, stopping before period keywords
+    location_pattern = r"(?:en|de)\s+([a-záéíóúñ\s]+?)(?=\s*(?:hoy|mañana|esta semana|próximos?\s*\d*\s*(?:días?|meses?|semanas?)?|para\s+(?:hoy|mañana|esta semana|próximos?\s*\d*\s*(?:días?|meses?|semanas?))?|$))"
+    period_pattern = r"(hoy|mañana|esta semana|próximos?\s*(\d+)\s*(días?|meses?|semanas?)|para\s+(?:hoy|mañana|esta semana|próximos?\s*(\d+)\s*(días?|meses?|semanas?)))"
     
     location_match = re.search(location_pattern, sentence)
     period_match = re.search(period_pattern, sentence)
     
     location = location_match.group(1).strip() if location_match else None
-    period = period_match.group(1) if period_match else "hoy"
+    period = period_match.group(1) if period_match and period_match.group(1) else "hoy"
     days = None
     if period_match and period_match.group(2):
         days = int(period_match.group(2)) if period_match.group(3).startswith("día") else None
@@ -97,7 +114,11 @@ def extract_location_and_period(sentence):
             days = int(period_match.group(2)) * 7
         elif period_match.group(3).startswith("mes"):
             days = int(period_match.group(2)) * 30
+    elif period == "esta semana":
+        days = 7  # Assume "esta semana" means 7 days
     
+    # Debug print to verify extraction
+    print(f"Location: {location}, Period: {period}, Days: {days}")
     return location, period, days
 
 # Function to get weather data from OpenWeatherMap API
@@ -126,8 +147,8 @@ def get_weather_data(latitude, longitude, intent_tag, days=None, api_key=os.gete
 # Function to handle historical data (if needed for long-term forecasts)
 def handle_historical_data(latitude, longitude, days, api_key):
     # OpenWeatherMap's One Call API only supports up to 8 days forecast.
-    # For longer periods, we can indicate limitations or use historical API (separate endpoint).
-    # Historical data requires a different API: https://api.openweathermap.org/data/3.0/onecall/timemachine
+    # For longer periods, use historical API (separate endpoint).
+    # Historical data requires: https://api.openweathermap.org/data/3.0/onecall/timemachine
     # Note: This requires a paid subscription for full historical data access.
     if days > 8:
         return None  # Placeholder: Indicate that long-term forecasts beyond 8 days are not supported
@@ -178,7 +199,7 @@ def format_weather_response(data, intent_tag, location, period, days=None):
             return f"Mañana en {location} se espera {weather_desc} con temperaturas entre {temp_min}°C y {temp_max}°C, y precipitación de {precip} mm."
         else:
             # Short-term forecast (up to 8 days with One Call API)
-            days = min(days or 8, 8)
+            days = min(days or 7, 8)  # Default to 7 for "esta semana", max 8
             response = f"Pronóstico para los próximos {days} días en {location}:\n"
             for i in range(days):
                 date = (datetime.now() + timedelta(days=i)).strftime("%Y-%m-%d")
@@ -215,20 +236,19 @@ def format_weather_response(data, intent_tag, location, period, days=None):
         temp = current.get("temp", "desconocida")
         precip = current.get("rain", {}).get("1h", 0)
         weather_code = current.get("weather", [{}])[0].get("id", 0)
-        weather_code = current.get("weather", [{}])[0].get("id", 0)
         weather_desc = weather_codes.get(weather_code, current.get("weather", [{}])[0].get("description", "Condición desconocida"))
         return f"El clima general en {location} hoy es {weather_desc} con una temperatura promedio de {temp}°C y precipitación de {precip} mm."
     
     return "Lo siento, no pude procesar los datos del clima."
 
 # Function to get response
-def get_response(ints, intents_json, user_input, api_key):
+def get_response(ints, intents_json, user_input, api_key=os.getenv("API_KEY_WHEATHER")):
     tag = ints[0]['intent'] if ints else 'sin_respuesta'
     if tag in ["clima_actual", "pronostico_corto", "pronostico_largo", "clima_general"]:
         location, period, days = extract_location_and_period(user_input)
         if not location:
             return "Por favor, especifica una ciudad o país para consultar el clima."
-        latitude, longitude = get_coordinates(location)
+        latitude, longitude = get_coordinates(location, api_key)
         if latitude is None or longitude is None:
             return f"No pude encontrar la ubicación {location}. Intenta con otra ciudad o país."
         weather_data = get_weather_data(latitude, longitude, tag, days, api_key)
@@ -241,16 +261,13 @@ def get_response(ints, intents_json, user_input, api_key):
 
 # Streamlit app
 st.title("Mi Chatbot del Clima")
-st.write("Pregúntame sobre el clima actual o el pronóstico en cualquier ciudad o país.")
+st.write("Pregúntame sobre el clima actual o el pronóstico en cualquier ciudad o país. Los pronósticos están disponibles hasta 8 días.")
 
 # Initialize session state for chat history and input
 if 'chat_history' not in st.session_state:
     st.session_state.chat_history = []
 if 'input_text' not in st.session_state:
     st.session_state.input_text = ""
-
-# Your OpenWeatherMap API key
-API_KEY = os.getenv("API_KEY_WHEATHER")  # Replace with your actual API key
 
 # Create a form for input
 with st.form(key="chat_form", clear_on_submit=True):
@@ -261,7 +278,7 @@ with st.form(key="chat_form", clear_on_submit=True):
 if submit_button and user_input.strip():
     # Predict intent and get response
     intents_pred = predict_class(user_input, model)
-    response = get_response(intents_pred, intents, user_input, API_KEY)
+    response = get_response(intents_pred, intents, user_input)
     
     # Add to chat history
     st.session_state.chat_history.append(("Tú", user_input))
