@@ -10,11 +10,6 @@ import requests
 import re
 from geopy.geocoders import Nominatim
 from datetime import datetime, timedelta
-import os
-from dotenv import load_dotenv
-
-# Load environment variables from .env file
-load_dotenv()
 
 # Download required NLTK data
 nltk.download('punkt_tab')
@@ -68,37 +63,18 @@ def predict_class(sentence, model):
     return return_list
 
 # Function to get coordinates from location name
-def get_coordinates(location, api_key):
-    # Try Nominatim first
+def get_coordinates(location):
     try:
         loc = geolocator.geocode(location)
         if loc:
             return loc.latitude, loc.longitude
+        return None, None
     except:
-        pass
-    
-    # Fallback to OpenWeatherMap geocoding API for countries or ambiguous locations
-    try:
-        geo_url = "http://api.openweathermap.org/geo/1.0/direct"
-        params = {
-            "q": location,
-            "limit": 1,
-            "appid": api_key
-        }
-        response = requests.get(geo_url, params=params)
-        response.raise_for_status()
-        data = response.json()
-        if data and len(data) > 0:
-            return data[0]["lat"], data[0]["lon"]
-        else:
-            return None, None
-    except requests.RequestException:
         return None, None
 
 # Function to extract location and period from user input
 def extract_location_and_period(sentence):
     sentence = sentence.lower()
-    # Improved pattern to capture only city or country, stopping before period keywords
     location_pattern = r"(?:en|de)\s+([a-záéíóúñ\s]+?)(?=\s*(?:hoy|mañana|esta semana|próximos?\s*\d*\s*(?:días?|meses?|semanas?)?|para\s+(?:hoy|mañana|esta semana|próximos?\s*\d*\s*(?:días?|meses?|semanas?))?|$))"
     period_pattern = r"(hoy|mañana|esta semana|próximos?\s*(\d+)\s*(días?|meses?|semanas?)|para\s+(?:hoy|mañana|esta semana|próximos?\s*(\d+)\s*(días?|meses?|semanas?)))"
     
@@ -117,24 +93,20 @@ def extract_location_and_period(sentence):
     elif period == "esta semana":
         days = 7  # Assume "esta semana" means 7 days
     
-    # Debug print to verify extraction
     print(f"Location: {location}, Period: {period}, Days: {days}")
     return location, period, days
 
-# Function to get weather data from OpenWeatherMap API
-def get_weather_data(latitude, longitude, intent_tag, days=None, api_key=os.getenv("API_KEY_WHEATHER")):
-    base_url = "https://api.openweathermap.org/data/3.0/onecall"
+# Function to get weather data from Open-Meteo API
+def get_weather_data(latitude, longitude, intent_tag, days=None):
+    base_url = "https://api.open-meteo.com/v1/forecast"
     params = {
-        "lat": latitude,
-        "lon": longitude,
-        "appid": api_key,
-        "units": "metric",  # Use metric units for temperature in Celsius
-        "lang": "es"  # Spanish language for descriptions
+        "latitude": latitude,
+        "longitude": longitude,
+        "current": "temperature_2m,precipitation,weather_code",
+        "daily": "temperature_2m_max,temperature_2m_min,precipitation_sum,weather_code",
+        "timezone": "auto",
+        "forecast_days": min(days or 7, 16)  # Open-Meteo supports up to 16 days
     }
-    
-    # For historical data (if needed for intent_tag == "pronostico_largo" and days > 8)
-    if intent_tag == "pronostico_largo" and days and days > 8:
-        return handle_historical_data(latitude, longitude, days, api_key)
     
     try:
         response = requests.get(base_url, params=params)
@@ -144,114 +116,101 @@ def get_weather_data(latitude, longitude, intent_tag, days=None, api_key=os.gete
         print(f"Error fetching weather data: {e}")
         return None
 
-# Function to handle historical data (if needed for long-term forecasts)
-def handle_historical_data(latitude, longitude, days, api_key):
-    # OpenWeatherMap's One Call API only supports up to 8 days forecast.
-    # For longer periods, use historical API (separate endpoint).
-    # Historical data requires: https://api.openweathermap.org/data/3.0/onecall/timemachine
-    # Note: This requires a paid subscription for full historical data access.
-    if days > 8:
-        return None  # Placeholder: Indicate that long-term forecasts beyond 8 days are not supported
-    return None
-
 # Function to format weather data
 def format_weather_response(data, intent_tag, location, period, days=None):
     if not data:
-        return f"Lo siento, no pude obtener los datos del clima para {location}."
+        return f"Lo siento, no pude obtener los datos del clima para {location}. Intenta de nuevo más tarde."
     
-    # OpenWeatherMap weather condition codes (simplified mapping)
+    # WMO weather codes (used by Open-Meteo)
     weather_codes = {
-        200: "Tormenta con lluvia ligera",
-        201: "Tormenta con lluvia",
-        202: "Tormenta con lluvia fuerte",
-        500: "Lluvia ligera",
-        501: "Lluvia moderada",
-        502: "Lluvia fuerte",
-        600: "Nieve ligera",
-        601: "Nieve",
-        602: "Nieve fuerte",
-        800: "Cielo despejado",
-        801: "Pocas nubes",
-        802: "Nubes dispersas",
-        803: "Nubes rotas",
-        804: "Cielo nublado"
+        0: "Cielo despejado",
+        1: "Mayormente despejado",
+        2: "Parcialmente nublado",
+        3: "Cielo nublado",
+        51: "Llovizna ligera",
+        53: "Llovizna moderada",
+        55: "Llovizna intensa",
+        61: "Lluvia ligera",
+        63: "Lluvia moderada",
+        65: "Lluvia fuerte",
+        71: "Nieve ligera",
+        73: "Nieve moderada",
+        75: "Nieve fuerte",
+        80: "Chubascos ligeros",
+        81: "Chubascos moderados",
+        82: "Chubascos fuertes",
+        95: "Tormenta"
     }
     
     if intent_tag == "clima_actual":
         current = data.get("current", {})
-        temp = current.get("temp", "desconocida")
-        precip = current.get("rain", {}).get("1h", 0)  # Rainfall in the last hour (mm)
-        weather_code = current.get("weather", [{}])[0].get("id", 0)
-        weather_desc = weather_codes.get(weather_code, current.get("weather", [{}])[0].get("description", "Condición desconocida"))
+        temp = current.get("temperature_2m", "desconocida")
+        precip = current.get("precipitation", 0)
+        weather_code = current.get("weather_code", 0)
+        weather_desc = weather_codes.get(weather_code, "Condición desconocida")
         return f"El clima actual en {location} es {weather_desc} con una temperatura de {temp}°C y precipitación de {precip} mm."
     
     elif intent_tag == "pronostico_corto":
-        daily = data.get("daily", [])
+        daily = data.get("daily", {})
         if not daily:
             return f"No hay datos de pronóstico disponibles para {location}."
         if period == "mañana":
-            tomorrow = daily[1]
-            temp_max = tomorrow.get("temp", {}).get("max", "desconocida")
-            temp_min = tomorrow.get("temp", {}).get("min", "desconocida")
-            precip = tomorrow.get("rain", 0)
-            weather_code = tomorrow.get("weather", [{}])[0].get("id", 0)
-            weather_desc = weather_codes.get(weather_code, tomorrow.get("weather", [{}])[0].get("description", "Condición desconocida"))
+            temp_max = daily.get("temperature_2m_max", [])[1]
+            temp_min = daily.get("temperature_2m_min", [])[1]
+            precip = daily.get("precipitation_sum", [])[1]
+            weather_code = daily.get("weather_code", [])[1]
+            weather_desc = weather_codes.get(weather_code, "Condición desconocida")
             return f"Mañana en {location} se espera {weather_desc} con temperaturas entre {temp_min}°C y {temp_max}°C, y precipitación de {precip} mm."
         else:
-            # Short-term forecast (up to 8 days with One Call API)
-            days = min(days or 7, 8)  # Default to 7 for "esta semana", max 8
+            days = min(days or 7, 16)  # Default to 7 for "esta semana", max 16
             response = f"Pronóstico para los próximos {days} días en {location}:\n"
             for i in range(days):
                 date = (datetime.now() + timedelta(days=i)).strftime("%Y-%m-%d")
-                day_data = daily[i]
-                temp_max = day_data.get("temp", {}).get("max", "desconocida")
-                temp_min = day_data.get("temp", {}).get("min", "desconocida")
-                precip = day_data.get("rain", 0)
-                weather_code = day_data.get("weather", [{}])[0].get("id", 0)
-                weather_desc = weather_codes.get(weather_code, day_data.get("weather", [{}])[0].get("description", "Condición desconocida"))
+                temp_max = daily.get("temperature_2m_max", [])[i]
+                temp_min = daily.get("temperature_2m_min", [])[i]
+                precip = daily.get("precipitation_sum", [])[i]
+                weather_code = daily.get("weather_code", [])[i]
+                weather_desc = weather_codes.get(weather_code, "Condición desconocida")
                 response += f"- {date}: {weather_desc}, {temp_min}°C - {temp_max}°C, precipitación {precip} mm\n"
             return response
     
     elif intent_tag == "pronostico_largo":
-        daily = data.get("daily", [])
+        daily = data.get("daily", {})
         if not daily:
             return f"No hay datos de pronóstico a largo plazo disponibles para {location}."
-        days = min(days or 8, 8)  # One Call API supports up to 8 days
+        days = min(days or 16, 16)  # Open-Meteo supports up to 16 days
         response = f"Pronóstico a largo plazo para {location} (hasta {days} días):\n"
         for i in range(days):
             date = (datetime.now() + timedelta(days=i)).strftime("%Y-%m-%d")
-            day_data = daily[i]
-            temp_max = day_data.get("temp", {}).get("max", "desconocida")
-            temp_min = day_data.get("temp", {}).get("min", "desconocida")
-            precip = day_data.get("rain", 0)
-            weather_code = day_data.get("weather", [{}])[0].get("id", 0)
-            weather_desc = weather_codes.get(weather_code, day_data.get("weather", [{}])[0].get("description", "Condición desconocida"))
+            temp_max = daily.get("temperature_2m_max", [])[i]
+            temp_min = daily.get("temperature_2m_min", [])[i]
+            precip = daily.get("precipitation_sum", [])[i]
+            weather_code = daily.get("weather_code", [])[i]
+            weather_desc = weather_codes.get(weather_code, "Condición desconocida")
             response += f"- {date}: {weather_desc}, {temp_min}°C - {temp_max}°C, precipitación {precip} mm\n"
-        if days > 8:
-            response += "Nota: Los pronósticos a más de 8 días no están disponibles con la API actual. Contacta con OpenWeatherMap para datos históricos o a largo plazo."
         return response
     
     elif intent_tag == "clima_general":
         current = data.get("current", {})
-        temp = current.get("temp", "desconocida")
-        precip = current.get("rain", {}).get("1h", 0)
-        weather_code = current.get("weather", [{}])[0].get("id", 0)
-        weather_desc = weather_codes.get(weather_code, current.get("weather", [{}])[0].get("description", "Condición desconocida"))
+        temp = current.get("temperature_2m", "desconocida")
+        precip = current.get("precipitation", 0)
+        weather_code = current.get("weather_code", 0)
+        weather_desc = weather_codes.get(weather_code, "Condición desconocida")
         return f"El clima general en {location} hoy es {weather_desc} con una temperatura promedio de {temp}°C y precipitación de {precip} mm."
     
-    return "Lo siento, no pude procesar los datos del clima."
+    return "Lo siento, no pude procesar los datos del clima. Intenta de nuevo."
 
 # Function to get response
-def get_response(ints, intents_json, user_input, api_key=os.getenv("API_KEY_WHEATHER")):
+def get_response(ints, intents_json, user_input):
     tag = ints[0]['intent'] if ints else 'sin_respuesta'
     if tag in ["clima_actual", "pronostico_corto", "pronostico_largo", "clima_general"]:
         location, period, days = extract_location_and_period(user_input)
         if not location:
             return "Por favor, especifica una ciudad o país para consultar el clima."
-        latitude, longitude = get_coordinates(location, api_key)
+        latitude, longitude = get_coordinates(location)
         if latitude is None or longitude is None:
             return f"No pude encontrar la ubicación {location}. Intenta con otra ciudad o país."
-        weather_data = get_weather_data(latitude, longitude, tag, days, api_key)
+        weather_data = get_weather_data(latitude, longitude, tag, days)
         return format_weather_response(weather_data, tag, location, period, days)
     
     for i in intents_json['intents']:
@@ -261,7 +220,7 @@ def get_response(ints, intents_json, user_input, api_key=os.getenv("API_KEY_WHEA
 
 # Streamlit app
 st.title("Mi Chatbot del Clima")
-st.write("Pregúntame sobre el clima actual o el pronóstico en cualquier ciudad o país. Los pronósticos están disponibles hasta 8 días.")
+st.write("Pregúntame sobre el clima actual o el pronóstico en cualquier ciudad o país. Los pronósticos están disponibles hasta 16 días con Open-Meteo.")
 
 # Initialize session state for chat history and input
 if 'chat_history' not in st.session_state:
@@ -276,15 +235,12 @@ with st.form(key="chat_form", clear_on_submit=True):
 
 # Handle form submission
 if submit_button and user_input.strip():
-    # Predict intent and get response
     intents_pred = predict_class(user_input, model)
     response = get_response(intents_pred, intents, user_input)
     
-    # Add to chat history
     st.session_state.chat_history.append(("Tú", user_input))
     st.session_state.chat_history.append(("Chatbot", response))
     
-    # Clear the input field
     st.session_state.input_text = ""
 
 # Display chat history
