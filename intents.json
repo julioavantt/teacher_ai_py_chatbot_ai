@@ -1,0 +1,101 @@
+{
+  "intents": [
+    {
+      "tag": "clima_actual",
+      "patterns": [
+        "¿Cuál es el clima en [ciudad] ahora?",
+        "¿Cómo está el tiempo en [ciudad] hoy?",
+        "Dime el clima actual en [ciudad]",
+        "¿Qué tiempo hace en [ciudad] en este momento?",
+        "Clima de [ciudad] ahora",
+        "¿Está lloviendo en [ciudad] hoy?",
+        "¿Cuál es la temperatura en [ciudad] ahora?",
+        "Tiempo en [ciudad] hoy"
+      ],
+      "responses": [
+        "Consultando el clima actual en [ciudad]. Un momento, por favor.",
+        "Te proporciono el tiempo actual para [ciudad] en breve.",
+        "Buscando el clima en [ciudad] ahora mismo."
+      ],
+      "context_set": "clima_actual"
+    },
+    {
+      "tag": "pronostico_corto",
+      "patterns": [
+        "¿Cuál es el pronóstico del clima para [ciudad] mañana?",
+        "Dime el tiempo en [ciudad] para los próximos [número] días",
+        "¿Cómo estará el clima en [ciudad] esta semana?",
+        "Pronóstico del tiempo en [ciudad] para el fin de semana",
+        "¿Qué tiempo hará en [ciudad] en los próximos días?",
+        "Clima de [ciudad] para los próximos [número] días",
+        "Pronóstico en [ciudad] hasta 15 días",
+        "¿Cómo estará el tiempo en [ciudad] dentro de [número] días?"
+      ],
+      "responses": [
+        "Buscando el pronóstico para [ciudad] hasta 15 días.",
+        "Te doy el clima de [ciudad] para los próximos días solicitados.",
+        "Consultando el pronóstico a corto plazo (hasta 15 días) para [ciudad]."
+      ],
+      "context_set": "pronostico_corto"
+    },
+    {
+      "tag": "pronostico_largo",
+      "patterns": [
+        "¿Cuál es el pronóstico del clima en [ciudad] para los próximos [número] días?",
+        "Dime cómo estará el tiempo en [ciudad] en [número] días",
+        "¿Qué clima se espera en [ciudad] para el próximo mes?",
+        "Pronóstico del tiempo en [ciudad] para los próximos 90 días",
+        "Clima de [ciudad] en los próximos [número] meses",
+        "¿Cómo será el tiempo en [ciudad] dentro de [número] semanas?",
+        "Pronóstico a largo plazo para [ciudad]"
+      ],
+      "responses": [
+        "Consultando proyecciones climáticas para [ciudad] hasta [número] días. Ten en cuenta que más allá de 15 días, los datos son menos precisos.",
+        "Te proporciono el pronóstico a largo plazo para [ciudad].",
+        "Buscando datos climáticos extendidos para [ciudad] (hasta 90 días)."
+      ],
+      "context_set": "pronostico_largo"
+    },
+    {
+      "tag": "clima_general",
+      "patterns": [
+        "¿Qué tiempo hace en [país] hoy?",
+        "Dime el clima en [país] ahora",
+        "¿Cómo está el tiempo en [país] esta semana?",
+        "Pronóstico del clima para [país] en los próximos [número] días",
+        "Clima de [país] para el próximo mes",
+        "Tiempo en [país] ahora"
+      ],
+      "responses": [
+        "Consultando el clima general para [país]. Un momento.",
+        "Te doy el pronóstico para [país] en breve.",
+        "Buscando información del tiempo en [país]."
+      ],
+      "context_set": "clima_general"
+    },
+    {
+      "tag": "ayuda_clima",
+      "patterns": [
+        "¿Cómo consulto el clima?",
+        "¿Qué puedo preguntar sobre el clima?",
+        "Ayuda con el pronóstico del tiempo",
+        "¿Cómo funciona el pronóstico del clima?",
+        "¿Qué sabes sobre el clima?"
+      ],
+      "responses": [
+        "Puedes preguntarme sobre el clima actual o el pronóstico en cualquier ciudad o país. Por ejemplo: '¿Cuál es el clima en Lima hoy?' o 'Pronóstico para Santiago en los próximos 7 días'. Los pronósticos a corto plazo cubren hasta 15 días, y los de largo plazo hasta 90 días (aunque con menor precisión). ¡Prueba con una ciudad o país!",
+        "Para consultar el clima, dime la ciudad o país y el período, como 'hoy', 'mañana' o 'los próximos 10 días'. Ejemplo: 'Clima en Bogotá para esta semana'. ¿En qué te ayudo?"
+      ],
+      "context_set": "ayuda_clima"
+    },
+    {
+      "tag": "sin_respuesta",
+      "patterns": [],
+      "responses": [
+        "Lo siento, no entendí tu consulta. Intenta preguntar sobre el clima, como 'Clima en Madrid hoy' o 'Pronóstico para Buenos Aires en 10 días'.",
+        "No estoy seguro de qué quieres saber. ¿Puedes preguntar sobre el clima de una ciudad o país?"
+      ],
+      "context_set": "sin_respuesta"
+    }
+  ]
+}
