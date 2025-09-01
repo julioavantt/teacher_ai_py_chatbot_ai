@@ -10,6 +10,9 @@ import requests
 import re
 from geopy.geocoders import Nominatim
 from datetime import datetime, timedelta
+import os
+
+os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
 
 # Download required NLTK data
 nltk.download('punkt_tab')

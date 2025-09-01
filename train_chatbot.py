@@ -2,9 +2,8 @@ import json
 import numpy as np
 import nltk
 from nltk.stem import WordNetLemmatizer
-import tensorflow as tf
-from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import Dense, Dropout
+from keras.models import Sequential
+from keras.layers import Dense, Dropout
 import random
 import pickle
 
