@@ -1,0 +1,7 @@
+geopy
+keras 
+nltk
+numpy
+requests
+streamlit
+tensorflow
